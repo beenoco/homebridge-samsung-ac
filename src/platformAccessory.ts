@@ -1,13 +1,17 @@
 import { Service, PlatformAccessory, CharacteristicValue } from 'homebridge';
 
-import { ExampleHomebridgePlatform } from './platform';
+import { BeenocoSamsungACPlatform } from './platform';
+
+import fs = require('node:fs');
+import https = require('node:https');
+// const tls = require('node:tls');
 
 /**
  * Platform Accessory
- * An instance of this class is created for each accessory your platform registers
+ * An instance of this class is created for each accessory your platform registers.
  * Each accessory may expose multiple services of different service types.
  */
-export class ExamplePlatformAccessory {
+export class BeenocoSamsungACPlatformAccessory {
   private service: Service;
 
   /**
@@ -16,39 +20,47 @@ export class ExamplePlatformAccessory {
    */
   private exampleStates = {
     On: false,
-    Brightness: 100,
+    Temperature: 100,
   };
 
   constructor(
-    private readonly platform: ExampleHomebridgePlatform,
+    private readonly platform: BeenocoSamsungACPlatform,
     private readonly accessory: PlatformAccessory,
   ) {
 
     // set accessory information
     this.accessory.getService(this.platform.Service.AccessoryInformation)!
-      .setCharacteristic(this.platform.Characteristic.Manufacturer, 'Default-Manufacturer')
-      .setCharacteristic(this.platform.Characteristic.Model, 'Default-Model')
-      .setCharacteristic(this.platform.Characteristic.SerialNumber, 'Default-Serial');
+      .setCharacteristic(this.platform.Characteristic.Manufacturer, 'Samsung')
+      .setCharacteristic(this.platform.Characteristic.Model, this.platform.config.deviceModel)
+      .setCharacteristic(this.platform.Characteristic.SerialNumber, this.platform.config.deviceMACAddress);
 
     // get the LightBulb service if it exists, otherwise create a new LightBulb service
     // you can create multiple services for each accessory
-    this.service = this.accessory.getService(this.platform.Service.Lightbulb) || this.accessory.addService(this.platform.Service.Lightbulb);
+    this.service = this.accessory.getService(this.platform.Service.Thermostat) ||
+      this.accessory.addService(this.platform.Service.Thermostat);
 
     // set the service name, this is what is displayed as the default name on the Home app
     // in this example we are using the name we stored in the `accessory.context` in the `discoverDevices` method.
-    this.service.setCharacteristic(this.platform.Characteristic.Name, accessory.context.device.exampleDisplayName);
+    this.service.setCharacteristic(
+      this.platform.Characteristic.Name, this.platform.config.name || 'Air Conditioner');
 
-    // each service must implement at-minimum the "required characteristics" for the given service type
-    // see https://developers.homebridge.io/#/service/Lightbulb
+    this.service.getCharacteristic(this.platform.Characteristic.CurrentHeatingCoolingState)
+      .onGet(this.handleCurrentHeatingCoolingStateGet.bind(this));
 
-    // register handlers for the On/Off Characteristic
-    this.service.getCharacteristic(this.platform.Characteristic.On)
-      .onSet(this.setOn.bind(this))                // SET - bind to the `setOn` method below
-      .onGet(this.getOn.bind(this));               // GET - bind to the `getOn` method below
+    this.service.getCharacteristic(this.platform.Characteristic.TargetHeatingCoolingState)
+      .onGet(this.handleTargetHeatingCoolingStateGet.bind(this))
+      .onSet(this.handleTargetHeatingCoolingStateSet.bind(this));
 
-    // register handlers for the Brightness Characteristic
-    this.service.getCharacteristic(this.platform.Characteristic.Brightness)
-      .onSet(this.setBrightness.bind(this));       // SET - bind to the 'setBrightness` method below
+    this.service.getCharacteristic(this.platform.Characteristic.CurrentTemperature)
+      .onGet(this.handleCurrentTemperatureGet.bind(this));
+
+    this.service.getCharacteristic(this.platform.Characteristic.TargetTemperature)
+      .onGet(this.handleTargetTemperatureGet.bind(this))
+      .onSet(this.handleTargetTemperatureSet.bind(this));
+
+    this.service.getCharacteristic(this.platform.Characteristic.TemperatureDisplayUnits)
+      .onGet(this.handleTemperatureDisplayUnitsGet.bind(this))
+      .onSet(this.handleTemperatureDisplayUnitsSet.bind(this));
 
     /**
      * Creating multiple services of the same type.
@@ -62,11 +74,11 @@ export class ExamplePlatformAccessory {
      */
 
     // Example: add two "motion sensor" services to the accessory
-    const motionSensorOneService = this.accessory.getService('Motion Sensor One Name') ||
-      this.accessory.addService(this.platform.Service.MotionSensor, 'Motion Sensor One Name', 'YourUniqueIdentifier-1');
+    // const motionSensorOneService = this.accessory.getService('Motion Sensor One Name') ||
+    //   this.accessory.addService(this.platform.Service.MotionSensor, 'Motion Sensor One Name', 'YourUniqueIdentifier-1');
 
-    const motionSensorTwoService = this.accessory.getService('Motion Sensor Two Name') ||
-      this.accessory.addService(this.platform.Service.MotionSensor, 'Motion Sensor Two Name', 'YourUniqueIdentifier-2');
+    // const motionSensorTwoService = this.accessory.getService('Motion Sensor Two Name') ||
+    //   this.accessory.addService(this.platform.Service.MotionSensor, 'Motion Sensor Two Name', 'YourUniqueIdentifier-2');
 
     /**
      * Updating characteristics values asynchronously.
@@ -83,12 +95,116 @@ export class ExamplePlatformAccessory {
       motionDetected = !motionDetected;
 
       // push the new value to HomeKit
-      motionSensorOneService.updateCharacteristic(this.platform.Characteristic.MotionDetected, motionDetected);
-      motionSensorTwoService.updateCharacteristic(this.platform.Characteristic.MotionDetected, !motionDetected);
+      // motionSensorOneService.updateCharacteristic(this.platform.Characteristic.MotionDetected, motionDetected);
+      // motionSensorTwoService.updateCharacteristic(this.platform.Characteristic.MotionDetected, !motionDetected);
 
-      this.platform.log.debug('Triggering motionSensorOneService:', motionDetected);
-      this.platform.log.debug('Triggering motionSensorTwoService:', !motionDetected);
-    }, 10000);
+      // this.platform.log.debug('Triggering motionSensorOneService:', motionDetected);
+      // this.platform.log.debug('Triggering motionSensorTwoService:', !motionDetected);
+    }, this.platform.config.devicePollInterval * 1000);
+  }
+
+  options(method, resource) : https.RequestOptions {
+    const cert = fs.readFileSync(__dirname + '/../cert.pem');
+    const agent = new https.Agent({
+      cert: cert,
+      key: cert,
+      ciphers: 'DEFAULT:@SECLEVEL=0',
+      // Optionally, you can also include the CA certificate (if required)
+      // ca: fs.readFileSync('path/to/ca.crt'),
+    });
+    return {
+      hostname: this.platform.config.deviceIPAddress,
+      port: 8888,
+      path: '/devices/' + this.accessory.context.device.id + resource,
+      method: method,
+      rejectUnauthorized: false,
+      secureProtocol: 'TLSv1_method',
+      agent: agent,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + this.platform.config.deviceToken,
+      },
+    };
+  }
+
+  get(resource) : Promise<any> {
+    return new Promise((resolve, reject) => {
+      https.request(this.options('GET', resource), res => {
+        let rawData = '';
+        res.on('data', (chunk) => {
+          rawData += chunk;
+        });
+        res.on('end', () => {
+          try {
+            resolve(JSON.parse(rawData));
+          } catch (e : unknown) {
+            reject(rawData);
+          }
+        });
+      }).end();
+    });
+  }
+
+  put(resource, json) : Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      const request = https.request(this.options('PUT', resource), res => {
+        let rawData = '';
+        res.on('data', (chunk) => {
+          rawData += chunk;
+        });
+        res.on('end', () => {
+          try {
+            resolve(JSON.parse(rawData));
+          } catch (e : unknown) {
+            reject(rawData);
+          }
+        });
+      });
+      this.platform.log.debug('Writing json: ', json);
+      request.write(JSON.stringify(json));
+      request.end();
+    });
+  }
+
+  /**
+   * Handle requests to get the current value of the "Target Temperature" characteristic
+   */
+  async handleTargetTemperatureGet() : Promise<CharacteristicValue> {
+    this.platform.log.debug('Triggered GET TargetTemperature');
+    return this.get('/temperatures/0').then((json) => {
+      this.platform.log.debug('JSON:', json);
+      try {
+        this.platform.log.debug('Resolving with result:', json.Temperature.desired);
+        return json.Temperature.desired;
+      } catch (e : unknown) {
+        throw new this.platform.api.hap.HapStatusError(
+          this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+      }
+    });
+
+    // return new Promise((resolve, reject) => {
+    //   https.request(this.options(), res => {
+    //     // this.platform.log.debug('Status code:', res.statusCode);
+    //     // res.setEncoding('utf8');
+    //     let rawData = '';
+    //     res.on('data', (chunk) => {
+    //       rawData += chunk;
+    //     });
+    //     res.on('end', () => {
+    //       try {
+    //       // this.platform.log.debug('Raw data: ', rawData);
+    //         const parsedData = JSON.parse(rawData);
+    //         this.platform.log.debug('Parsed data', parsedData);
+    //         this.platform.log.debug('Resolving with result:', parsedData.Temperature.desired);
+    //         resolve(parsedData.Temperature.desired);
+    //       } catch (e : any) {
+    //         // throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    //         reject(rawData);
+    //         // console.error(e.message);
+    //       }
+    //     });
+    //   }).end();
+    // });
   }
 
   /**
@@ -131,11 +247,117 @@ export class ExamplePlatformAccessory {
    * Handle "SET" requests from HomeKit
    * These are sent when the user changes the state of an accessory, for example, changing the Brightness
    */
-  async setBrightness(value: CharacteristicValue) {
+  async setTargetTemperature(value: CharacteristicValue) {
     // implement your own code to set the brightness
-    this.exampleStates.Brightness = value as number;
+    this.exampleStates.Temperature = value as number;
 
-    this.platform.log.debug('Set Characteristic Brightness -> ', value);
+    this.platform.log.debug('Set Characteristic Temperature -> ', value);
+  }
+
+
+  /**
+   * Handle requests to get the current value of the "Current Heating Cooling State" characteristic
+   */
+  async handleCurrentHeatingCoolingStateGet() : Promise<CharacteristicValue> {
+    this.platform.log.debug('Triggered GET CurrentHeatingCoolingState');
+
+    // set this to a valid value for CurrentHeatingCoolingState
+    const currentValue = this.platform.Characteristic.CurrentHeatingCoolingState.OFF;
+
+    return currentValue;
+  }
+
+
+  /**
+   * Handle requests to get the current value of the "Target Heating Cooling State" characteristic
+   */
+  async handleTargetHeatingCoolingStateGet() : Promise<CharacteristicValue> {
+    this.platform.log.debug('Triggered GET TargetHeatingCoolingState');
+
+    // set this to a valid value for TargetHeatingCoolingState
+    const currentValue = this.platform.Characteristic.TargetHeatingCoolingState.OFF;
+
+    return currentValue;
+  }
+
+  /**
+   * Handle requests to set the "Target Heating Cooling State" characteristic
+   */
+  handleTargetHeatingCoolingStateSet(value) {
+    this.platform.log.debug('Triggered SET TargetHeatingCoolingState:', value);
+  }
+
+  /**
+   * Handle requests to get the current value of the "Current Temperature" characteristic
+   */
+  async handleCurrentTemperatureGet() : Promise<CharacteristicValue> {
+    this.platform.log.debug('Triggered GET CurrentTemperature');
+
+    // set this to a valid value for CurrentTemperature
+    // const currentValue = -270;
+    this.platform.log.debug('Triggered GET TemperatureDisplayUnits');
+    return this.get('/temperatures/0').then((json) => {
+      // this.platform.log.debug('JSON:', json);
+      // try {
+      this.platform.log.debug('Resolving with result:', json);
+      return json.Temperature.current;
+      // } catch (e : unknown) {
+      //   throw new this.platform.api.hap.HapStatusError(
+      //     this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+      // }
+    });
+  }
+
+  /**
+   * Handle requests to set the "Target Temperature" characteristic
+   */
+  async handleTargetTemperatureSet(value) {
+    this.platform.log.debug('Triggered SET TargetTemperature:', value);
+    const json = '"Temperature":{"desired":"' + value + '"}';
+    await this.put('/temperatures/0', json);
+  }
+
+  /**
+   * Handle requests to get the current value of the "Temperature Display Units" characteristic
+   */
+  handleTemperatureDisplayUnitsGet() : Promise<CharacteristicValue> {
+    this.platform.log.debug('Triggered GET TemperatureDisplayUnits');
+    return this.get('/temperatures/0').then((json) => {
+      // this.platform.log.debug('JSON:', json);
+      // try {
+      this.platform.log.debug('Resolving with result:', json);
+      switch (json.Temperature.unit) {
+        case 'Celsius':
+          this.platform.log.debug('Celsius');
+          return this.platform.Characteristic.TemperatureDisplayUnits.CELSIUS;
+        case 'Fahrenheit':
+          return this.platform.Characteristic.TemperatureDisplayUnits.FAHRENHEIT;
+      }
+      if (json.Temperature.unit === 'Celsius') {
+        return this.platform.Characteristic.TemperatureDisplayUnits.CELSIUS;
+      } else {
+        return this.platform.Characteristic.TemperatureDisplayUnits.FAHRENHEIT;
+      }
+      // } catch (e : unknown) {
+      //   throw new this.platform.api.hap.HapStatusError(
+      //     this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+      // }
+    });
+  }
+
+  /**
+   * Handle requests to set the "Temperature Display Units" characteristic
+   */
+  async handleTemperatureDisplayUnitsSet(value) {
+    this.platform.log.debug('Triggered SET TemperatureDisplayUnits:', value);
+    let unit;
+    switch (value){
+      case this.platform.Characteristic.TemperatureDisplayUnits.CELSIUS:
+        unit = 'Celsius'; break;
+      case this.platform.Characteristic.TemperatureDisplayUnits.FAHRENHEIT:
+        unit = 'Fahrenheit'; break;
+    }
+    await this.put('/temperatures/0/', {'Temperature':{'unit':unit}});
   }
 
 }
