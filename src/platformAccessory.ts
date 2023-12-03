@@ -103,7 +103,7 @@ export class BeenocoSamsungACPlatformAccessory {
     }, this.platform.config.devicePollInterval * 1000);
   }
 
-  options(method, resource) : https.RequestOptions {
+  options(method, resource, contentLength=0) : https.RequestOptions {
     const cert = fs.readFileSync(__dirname + '/../cert.pem');
     const agent = new https.Agent({
       cert: cert,
@@ -122,46 +122,55 @@ export class BeenocoSamsungACPlatformAccessory {
       agent: agent,
       headers: {
         'Content-Type': 'application/json',
+        'Content-Length': contentLength,
         'Authorization': 'Bearer ' + this.platform.config.deviceToken,
       },
     };
   }
 
-  get(resource) : Promise<any> {
-    return new Promise((resolve, reject) => {
-      https.request(this.options('GET', resource), res => {
-        let rawData = '';
-        res.on('data', (chunk) => {
-          rawData += chunk;
-        });
-        res.on('end', () => {
-          try {
-            resolve(JSON.parse(rawData));
-          } catch (e : unknown) {
-            reject(rawData);
-          }
-        });
-      }).end();
-    });
-  }
+  // get(resource) : Promise<any> {
+  //   return new Promise((resolve, reject) => {
+  //     https.request(this.options('GET', resource), res => {
+  //       let rawData = '';
+  //       res.on('data', (chunk) => {
+  //         rawData += chunk;
+  //       });
+  //       res.on('end', () => {
+  //         try {
+  //           resolve(JSON.parse(rawData));
+  //         } catch (e : unknown) {
+  //           reject(rawData);
+  //         }
+  //       });
+  //     }).end();
+  //   });
+  // }
 
-  put(resource, json) : Promise<unknown> {
+  request(method : string, resource='', json={}) : Promise<any> {
+    let content = '';
+    if (Object.keys(json).length) {
+      content = JSON.stringify(json);
+    }
     return new Promise((resolve, reject) => {
-      const request = https.request(this.options('PUT', resource), res => {
+      const request = https.request(this.options(method, resource, content.length), res => {
         let rawData = '';
+        this.platform.log.debug('Status code:', res.statusCode);
+        // res.setEncoding('utf8');
         res.on('data', (chunk) => {
           rawData += chunk;
         });
         res.on('end', () => {
           try {
-            resolve(JSON.parse(rawData));
+            this.platform.log.debug('Received: ', rawData);
+            resolve(rawData.length ? JSON.parse(rawData) : '');
           } catch (e : unknown) {
-            reject(rawData);
+            this.platform.log.debug('Rejecting: ', e);
+            // reject(rawData);
           }
         });
       });
-      this.platform.log.debug('Writing json: ', json);
-      request.write(JSON.stringify(json));
+      this.platform.log.debug('Sent: ', content);
+      request.write(content);
       request.end();
     });
   }
@@ -170,11 +179,11 @@ export class BeenocoSamsungACPlatformAccessory {
    * Handle requests to get the current value of the "Target Temperature" characteristic
    */
   async handleTargetTemperatureGet() : Promise<CharacteristicValue> {
-    this.platform.log.debug('Triggered GET TargetTemperature');
-    return this.get('/temperatures/0').then((json) => {
-      this.platform.log.debug('JSON:', json);
+    // this.platform.log.debug('Triggered GET TargetTemperature');
+    return this.request('GET', '/temperatures/0').then((json) => {
+      // this.platform.log.debug('JSON:', json);
       try {
-        this.platform.log.debug('Resolving with result:', json.Temperature.desired);
+        // this.platform.log.debug('Resolving with result:', json.Temperature.desired);
         return json.Temperature.desired;
       } catch (e : unknown) {
         throw new this.platform.api.hap.HapStatusError(
@@ -207,41 +216,41 @@ export class BeenocoSamsungACPlatformAccessory {
     // });
   }
 
-  /**
-   * Handle "SET" requests from HomeKit
-   * These are sent when the user changes the state of an accessory, for example, turning on a Light bulb.
-   */
-  async setOn(value: CharacteristicValue) {
-    // implement your own code to turn your device on/off
-    this.exampleStates.On = value as boolean;
+  // /**
+  //  * Handle "SET" requests from HomeKit
+  //  * These are sent when the user changes the state of an accessory, for example, turning on a Light bulb.
+  //  */
+  // async setOn(value: CharacteristicValue) {
+  //   // implement your own code to turn your device on/off
+  //   this.exampleStates.On = value as boolean;
 
-    this.platform.log.debug('Set Characteristic On ->', value);
-  }
+  //   this.platform.log.debug('Set Characteristic On ->', value);
+  // }
 
-  /**
-   * Handle the "GET" requests from HomeKit
-   * These are sent when HomeKit wants to know the current state of the accessory, for example, checking if a Light bulb is on.
-   *
-   * GET requests should return as fast as possbile. A long delay here will result in
-   * HomeKit being unresponsive and a bad user experience in general.
-   *
-   * If your device takes time to respond you should update the status of your device
-   * asynchronously instead using the `updateCharacteristic` method instead.
+  // /**
+  //  * Handle the "GET" requests from HomeKit
+  //  * These are sent when HomeKit wants to know the current state of the accessory, for example, checking if a Light bulb is on.
+  //  *
+  //  * GET requests should return as fast as possbile. A long delay here will result in
+  //  * HomeKit being unresponsive and a bad user experience in general.
+  //  *
+  //  * If your device takes time to respond you should update the status of your device
+  //  * asynchronously instead using the `updateCharacteristic` method instead.
 
-   * @example
-   * this.service.updateCharacteristic(this.platform.Characteristic.On, true)
-   */
-  async getOn(): Promise<CharacteristicValue> {
-    // implement your own code to check if the device is on
-    const isOn = this.exampleStates.On;
+  //  * @example
+  //  * this.service.updateCharacteristic(this.platform.Characteristic.On, true)
+  //  */
+  // async getOn(): Promise<CharacteristicValue> {
+  //   // implement your own code to check if the device is on
+  //   const isOn = this.exampleStates.On;
 
-    this.platform.log.debug('Get Characteristic On ->', isOn);
+  //   this.platform.log.debug('Get Characteristic On ->', isOn);
 
-    // if you need to return an error to show the device as "Not Responding" in the Home app:
-    // throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+  //   // if you need to return an error to show the device as "Not Responding" in the Home app:
+  //   // throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
 
-    return isOn;
-  }
+  //   return isOn;
+  // }
 
   /**
    * Handle "SET" requests from HomeKit
@@ -251,60 +260,74 @@ export class BeenocoSamsungACPlatformAccessory {
     // implement your own code to set the brightness
     this.exampleStates.Temperature = value as number;
 
-    this.platform.log.debug('Set Characteristic Temperature -> ', value);
+    // this.platform.log.debug('Set Characteristic Temperature -> ', value);
   }
-
 
   /**
    * Handle requests to get the current value of the "Current Heating Cooling State" characteristic
    */
-  async handleCurrentHeatingCoolingStateGet() : Promise<CharacteristicValue> {
-    this.platform.log.debug('Triggered GET CurrentHeatingCoolingState');
-
-    // set this to a valid value for CurrentHeatingCoolingState
-    const currentValue = this.platform.Characteristic.CurrentHeatingCoolingState.OFF;
-
-    return currentValue;
+  handleCurrentHeatingCoolingStateGet() : Promise<CharacteristicValue> {
+    return this.request('GET').then((json) => {
+      if (json.Device.Operation.power === 'On' && json.Device.Mode.modes[0] === 'Opmode_Cool') {
+        return this.platform.Characteristic.CurrentHeatingCoolingState.COOL;
+      } else if (json.Device.Operation.power === 'On' && json.Device.Mode.modes[0] === 'Opmode_Heat') {
+        return this.platform.Characteristic.CurrentHeatingCoolingState.HEAT;
+      } else if (json.Device.Operation.power === 'On' && json.Device.Mode.modes[0] === 'Opmode_Auto') {
+        return this.platform.Characteristic.TargetHeatingCoolingState.AUTO;
+      } else {
+        return this.platform.Characteristic.CurrentHeatingCoolingState.OFF;
+      }
+    });
   }
-
 
   /**
    * Handle requests to get the current value of the "Target Heating Cooling State" characteristic
    */
   async handleTargetHeatingCoolingStateGet() : Promise<CharacteristicValue> {
-    this.platform.log.debug('Triggered GET TargetHeatingCoolingState');
-
-    // set this to a valid value for TargetHeatingCoolingState
-    const currentValue = this.platform.Characteristic.TargetHeatingCoolingState.OFF;
-
-    return currentValue;
+    return this.request('GET').then((json) => {
+      if (json.Device.Operation.power === 'On' && json.Device.Mode.modes[0] === 'Opmode_Cool') {
+        return this.platform.Characteristic.TargetHeatingCoolingState.COOL;
+      } else if (json.Device.Operation.power === 'On' && json.Device.Mode.modes[0] === 'Opmode_Heat') {
+        return this.platform.Characteristic.TargetHeatingCoolingState.HEAT;
+      } else if (json.Device.Operation.power === 'On' && json.Device.Mode.modes[0] === 'Opmode_Auto') {
+        return this.platform.Characteristic.TargetHeatingCoolingState.AUTO;
+      } else {
+        return this.platform.Characteristic.TargetHeatingCoolingState.OFF;
+      }
+    });
   }
 
   /**
    * Handle requests to set the "Target Heating Cooling State" characteristic
    */
-  handleTargetHeatingCoolingStateSet(value) {
-    this.platform.log.debug('Triggered SET TargetHeatingCoolingState:', value);
+  async handleTargetHeatingCoolingStateSet(value) {
+    try {
+      if (value === this.platform.Characteristic.TargetHeatingCoolingState.OFF) {
+        this.request('PUT', '/operation', {'Operation':{'power':'Off'}})
+          .catch((reason) => this.platform.log.error('reason:', reason));
+      } else {
+        let mode = 'Opmode_Auto';
+        if (value === this.platform.Characteristic.TargetHeatingCoolingState.COOL) {
+          mode = 'Opmode_Cool';
+        } else if (value === this.platform.Characteristic.TargetHeatingCoolingState.HEAT) {
+          mode = 'Opmode_Heat';
+        }
+        let result = await this.request('PUT', '/operation', {'Operation': {'power': 'On'}});
+        this.platform.log.debug('REsult: ', result);
+        result = await this.request('PUT', '/mode', {'Mode': {'modes': [mode]}});
+        this.platform.log.debug('REsult: ', result);
+      }
+    } catch (e) {
+      this.platform.log.error('error', e);
+    }
   }
 
   /**
    * Handle requests to get the current value of the "Current Temperature" characteristic
    */
-  async handleCurrentTemperatureGet() : Promise<CharacteristicValue> {
-    this.platform.log.debug('Triggered GET CurrentTemperature');
-
-    // set this to a valid value for CurrentTemperature
-    // const currentValue = -270;
-    this.platform.log.debug('Triggered GET TemperatureDisplayUnits');
-    return this.get('/temperatures/0').then((json) => {
-      // this.platform.log.debug('JSON:', json);
-      // try {
-      this.platform.log.debug('Resolving with result:', json);
+  handleCurrentTemperatureGet() : Promise<CharacteristicValue> {
+    return this.request('GET', '/temperatures/0').then((json) => {
       return json.Temperature.current;
-      // } catch (e : unknown) {
-      //   throw new this.platform.api.hap.HapStatusError(
-      //     this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-      // }
     });
   }
 
@@ -312,27 +335,21 @@ export class BeenocoSamsungACPlatformAccessory {
    * Handle requests to set the "Target Temperature" characteristic
    */
   async handleTargetTemperatureSet(value) {
-    this.platform.log.debug('Triggered SET TargetTemperature:', value);
-    const json = '"Temperature":{"desired":"' + value + '"}';
-    await this.put('/temperatures/0', json);
+    // this.platform.log.debug('Triggered SET TargetTemperature:', value);
+    // const json = '"Temperature":{"desired":"' + value + '"}';
+    const result = await this.request('PUT', '/temperatures/0', {'Temperature':{'desired':value}});
+    this.platform.log.debug('Result : ', result);
   }
 
   /**
    * Handle requests to get the current value of the "Temperature Display Units" characteristic
    */
   handleTemperatureDisplayUnitsGet() : Promise<CharacteristicValue> {
-    this.platform.log.debug('Triggered GET TemperatureDisplayUnits');
-    return this.get('/temperatures/0').then((json) => {
+    // this.platform.log.debug('Triggered GET TemperatureDisplayUnits');
+    return this.request('GET', '/temperatures/0').then((json) => {
       // this.platform.log.debug('JSON:', json);
       // try {
-      this.platform.log.debug('Resolving with result:', json);
-      switch (json.Temperature.unit) {
-        case 'Celsius':
-          this.platform.log.debug('Celsius');
-          return this.platform.Characteristic.TemperatureDisplayUnits.CELSIUS;
-        case 'Fahrenheit':
-          return this.platform.Characteristic.TemperatureDisplayUnits.FAHRENHEIT;
-      }
+      // this.platform.log.debug('Resolving with result:', json);
       if (json.Temperature.unit === 'Celsius') {
         return this.platform.Characteristic.TemperatureDisplayUnits.CELSIUS;
       } else {
@@ -349,7 +366,7 @@ export class BeenocoSamsungACPlatformAccessory {
    * Handle requests to set the "Temperature Display Units" characteristic
    */
   async handleTemperatureDisplayUnitsSet(value) {
-    this.platform.log.debug('Triggered SET TemperatureDisplayUnits:', value);
+    // this.platform.log.debug('Triggered SET TemperatureDisplayUnits:', value);
     let unit;
     switch (value){
       case this.platform.Characteristic.TemperatureDisplayUnits.CELSIUS:
@@ -357,7 +374,7 @@ export class BeenocoSamsungACPlatformAccessory {
       case this.platform.Characteristic.TemperatureDisplayUnits.FAHRENHEIT:
         unit = 'Fahrenheit'; break;
     }
-    await this.put('/temperatures/0/', {'Temperature':{'unit':unit}});
+    await this.request('PUT', '/temperatures/0/', {'Temperature':{'unit':unit}});
   }
 
 }
