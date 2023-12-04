@@ -12,11 +12,11 @@
         "description": "A friendly name for the controlled device.",
         "type": "string",
         "required": true,
-        "default": "Air Conditioner",
-        "placeholder": "Air Conditioner",
+        "default": "Wi-Fi Kit",
+        "placeholder": "Wi-Fi Kit",
         "typeahead": {
           "source": [
-            "Air Conditioner"
+            "Wi-Fi Kit"
           ]
         }
       },
@@ -78,11 +78,11 @@
               "title": "Name",
               "type": "string",
               "required": true,
-              "default": "Indoor Unit",
-              "placeholder": "Indoor Unit",
+              "default": "Air Conditioner",
+              "placeholder": "Air Conditioner",
               "typeahead": {
                 "source": [
-                  "Indoor Unit"
+                  "Air Conditioner"
                 ]
               }
             },
