@@ -1,18 +1,39 @@
 <p align="center">
 
-<img src="https://github.com/homebridge/branding/raw/latest/logos/homebridge-wordmark-logo-vertical.png" width="150">
+<img src="./samsung-logo-square.jpg" width="150">
 
 </p>
 
 <span align="center">
 
-# Homebridge Platform Plugin Template
+# Samsung Air Conditioner Plugin for Homebridge by Beenoco
 
 </span>
 
-This is a template Homebridge dynamic platform plugin and can be used as a base to help you get started developing your own plugin.
+This is a Homebridge plugin for HomeKit control of certain Samsung air conditioner units by communicating with specific Samsung Wi-Fi Kit models.
 
-This template should be used in conjunction with the [developer documentation](https://developers.homebridge.io/). A full list of all supported service types, and their characteristics is available on this site.
+The following Samsung Wi-Fi Kit models have been tested and confirmed compatible:
+
+*   MIM-H03N
+
+## Prerequisites
+
+Before you can use this plugin, your Samsung Wi-Fi Kit must be physically installed and successfully onboarded onto your Wi-Fi network.
+
+You will need the following information to configure this plugin:
+
+### Wi-Fi Kit Device Token
+
+A device-unique token that authenticates each request made to the Wi-Fi Kit. Obtaining this token requires maki running a local server and ensuring 
+
+To obtain this token:
+
+1.  Run a local server on a local computer on your network
+
+### Controlled Device ID
+
+
+
 
 ### Clone As Template
 

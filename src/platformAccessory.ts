@@ -60,9 +60,9 @@ export class BeenocoSamsungACPlatformAccessory {
     this.tlsCert = fs.readFileSync(tlsDir + '/cert.pem');
     this.tlsKey = fs.readFileSync(tlsDir + '/key.pem');
 
-    setInterval(() => {
-      this.request('GET').then((json) => {
-        // this.platform.log.debug('JSON', json);
+    setInterval(async () => {
+      try {
+        const json = await this.request('GET');
         this.service.updateCharacteristic(this.platform.Characteristic.CurrentHeatingCoolingState,
           this.getCurrentState(json.Device));
         this.service.updateCharacteristic(this.platform.Characteristic.TargetHeatingCoolingState,
@@ -73,17 +73,15 @@ export class BeenocoSamsungACPlatformAccessory {
           json.Device.Temperatures[0].desired);
         this.service.updateCharacteristic(this.platform.Characteristic.TemperatureDisplayUnits,
           this.getUnit(json.Device.Temperatures[0]));
-      });
+      } catch(e) {
+        if (e instanceof Error) {
+          this.platform.log.error('Error from periodic update.', e.message);
+        }
+      }
     }, this.platform.config.devicePollInterval * 1000);
   }
 
   options(method: string, resource: string, contentLength: number) : https.RequestOptions {
-    const agent = new https.Agent({
-      ca: this.tlsCA,
-      cert: this.tlsCert,
-      key: this.tlsKey,
-      ciphers: 'DEFAULT:@SECLEVEL=0',
-    });
     return {
       hostname: this.platform.config.deviceIPAddress,
       port: 8888,
@@ -91,7 +89,12 @@ export class BeenocoSamsungACPlatformAccessory {
       method: method,
       rejectUnauthorized: false,
       secureProtocol: 'TLSv1_method',
-      agent: agent,
+      agent: new https.Agent({
+        ca: this.tlsCA,
+        cert: this.tlsCert,
+        key: this.tlsKey,
+        ciphers: 'DEFAULT:@SECLEVEL=0',
+      }),
       headers: {
         'Content-Type': 'application/json',
         'Content-Length': contentLength,
@@ -100,56 +103,87 @@ export class BeenocoSamsungACPlatformAccessory {
     };
   }
 
+  /**
+   * Send a request to the device
+   * @param method the HTTP method to use for the request
+   * @param resource the resource to be appended to the device URI
+   * @param json the JSON to send in the body of the request, may be empty
+   * @returns a promise resolving to the JSON result, may be empty
+   */
   request(method: string, resource='', json={}) : Promise<any> {
     let content = '';
     if (Object.keys(json).length) {
       content = JSON.stringify(json);
     }
     return new Promise((resolve, reject) => {
-      const request = https.request(this.options(method, resource, content.length), response => {
-        let rawData = '';
-        response.setEncoding('utf8');
-        if (response.statusCode && (response.statusCode < 200 || response.statusCode > 299)) {
-          reject(new Error('Request error status code: ' + response.statusCode));
-        }
-        response.on('data', (chunk) => {
-          rawData += chunk;
-        });
-        response.on('end', () => {
-          try {
-            if (rawData.length > 0) {
-              this.platform.log.debug('Received:', rawData);
-              resolve(JSON.parse(rawData));
-            } else {
-              resolve({});
-            }
-          } catch (e : unknown) {
-            this.platform.log.debug('Rejecting:', e);
-            reject(new Error('Error processing raw data: ' + rawData));
+      const request = https.request(
+        this.options(method, resource, content.length), (response) => {
+          response.setEncoding('utf8');
+          if (response.statusCode && (response.statusCode < 200 || response.statusCode > 299)) {
+            reject(new Error('Request error status code: ' + response.statusCode));
           }
+          let rawData = '';
+          response.on('data', (chunk) => {
+            rawData += chunk;
+          });
+          response.on('end', () => {
+            try {
+              resolve(rawData.length > 0 ? JSON.parse(rawData) : {});
+            } catch (e) {
+              reject(new Error('Error processing raw data: ' + rawData));
+            }
+          });
         });
-      });
+      // try {
       if (content.length > 0) {
-        this.platform.log.debug('Sending:', content);
+        // this.platform.log.debug('Sending:', content);
         request.write(content);
       }
+      request.on('error', e => {
+        // this.platform.log.error('Error', e);
+        reject(e);
+      });
       request.end();
     });
   }
 
   async handleTargetTemperatureGet() : Promise<CharacteristicValue> {
-    const json = await this.request('GET', '/temperatures/0');
-    return json.Temperature.desired;
+    try {
+      const json = await this.request('GET', '/temperatures/0');
+      return json.Temperature.desired;
+    } catch (e) {
+      if (e instanceof Error) {
+        this.platform.log.error('Get target temperature failed.', e.message);
+      }
+      throw new this.platform.api.hap.HapStatusError(
+        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    }
   }
 
   async handleCurrentHeatingCoolingStateGet() : Promise<CharacteristicValue> {
-    const json = await this.request('GET');
-    return this.getCurrentState(json.Device);
+    try {
+      const json = await this.request('GET');
+      return this.getCurrentState(json.Device);
+    } catch (e) {
+      if (e instanceof Error) {
+        this.platform.log.error('Get current heating/cooling state failed.', e.message);
+      }
+      throw new this.platform.api.hap.HapStatusError(
+        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    }
   }
 
   async handleTargetHeatingCoolingStateGet() : Promise<CharacteristicValue> {
-    const json = await this.request('GET');
-    return this.getTargetState(json.Device);
+    try {
+      const json = await this.request('GET');
+      return this.getTargetState(json.Device);
+    } catch (e) {
+      if (e instanceof Error) {
+        this.platform.log.error('Get target heating/cooling state failed.', e.message);
+      }
+      throw new this.platform.api.hap.HapStatusError(
+        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    }
   }
 
   async handleTargetHeatingCoolingStateSet(value: CharacteristicValue) {
@@ -164,51 +198,78 @@ export class BeenocoSamsungACPlatformAccessory {
         } else if (value === this.platform.Characteristic.TargetHeatingCoolingState.HEAT) {
           mode = 'Opmode_Heat';
         }
-        await this.request('PUT', '/operation', {'Operation': {'power': 'On'}})
-          .then(() => this.request('PUT', '/mode', {'Mode': {'modes': [mode]}}))
-          .catch((reason) => this.platform.log.error('reason:', reason));
+        await this.request('PUT', '/operation', {'Operation': {'power': 'On'}});
+        await this.request('PUT', '/mode', {'Mode': {'modes': [mode]}});
       }
     } catch (e) {
-      this.platform.log.error('error', e);
+      if (e instanceof Error) {
+        this.platform.log.error('Set target heating/cooling state failed.', e.message);
+      }
+      throw new this.platform.api.hap.HapStatusError(
+        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
     }
   }
 
   async handleCurrentTemperatureGet() : Promise<CharacteristicValue> {
-    const json = await this.request('GET', '/temperatures/0');
-    return json.Temperature.current;
+    try {
+      const json = await this.request('GET', '/temperatures/0');
+      return json.Temperature.current;
+    } catch (e) {
+      if (e instanceof Error) {
+        this.platform.log.error('Get current temperature failed.', e.message);
+      }
+      throw new this.platform.api.hap.HapStatusError(
+        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    }
   }
 
   async handleTargetTemperatureSet(value: CharacteristicValue) {
-    await this.request('PUT', '/temperatures/0', {'Temperature':{'desired':value}});
+    try {
+      await this.request('PUT', '/temperatures/0', {'Temperature': {'desired': value}});
+    } catch {
+      throw new this.platform.api.hap.HapStatusError(
+        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    }
   }
 
   async handleTemperatureDisplayUnitsGet() : Promise<CharacteristicValue> {
-    const json = await this.request('GET', '/temperatures/0');
-    return this.getUnit(json.Temperature);
+    try {
+      const json = await this.request('GET', '/temperatures/0');
+      return this.getUnit(json.Temperature);
+    } catch (e) {
+      if (e instanceof Error) {
+        this.platform.log.error('Get temperature units failed.', e.message);
+      }
+      throw new this.platform.api.hap.HapStatusError(
+        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    }
   }
 
   async handleTemperatureDisplayUnitsSet(value: CharacteristicValue) {
-    const unit = value === this.platform.Characteristic.TemperatureDisplayUnits.CELSIUS ?
-      'Celsius' : 'Fahrenheit';
-    await this.request('PUT', '/temperatures', {'Temperature':{'unit':unit}})
-      .catch((e) => this.platform.log.error(e));
+    try {
+      const unit = value === this.platform.Characteristic.TemperatureDisplayUnits.CELSIUS ?
+        'Celsius' : 'Fahrenheit';
+      await this.request('PUT', '/temperatures', {'Temperature': {'unit': unit}})
+        .catch((e) => this.platform.log.error(e));
+    } catch (e) {
+      if (e instanceof Error) {
+        this.platform.log.error('Set temperature units failed.', e.message);
+      }
+      throw new this.platform.api.hap.HapStatusError(
+        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    }
   }
 
   getCurrentState(jsonDevice) : CharacteristicValue {
-    if (jsonDevice.Operation.power === 'On' &&
-      (jsonDevice.Mode.modes[0] === 'Opmode_Cool' ||
-        (jsonDevice.Mode.modes[0] === 'Opmode_Auto' &&
-          jsonDevice.Temperatures[0].desired < jsonDevice.Temperatures[0].current))) {
-      // this.platform.log.debug('COOLING');
+    if (jsonDevice.Operation.power === 'On' && (jsonDevice.Mode.modes[0] === 'Opmode_Cool' ||
+      (jsonDevice.Mode.modes[0] === 'Opmode_Auto' &&
+        jsonDevice.Temperatures[0].desired < jsonDevice.Temperatures[0].current))) {
       return this.platform.Characteristic.CurrentHeatingCoolingState.COOL;
-    } else if (jsonDevice.Operation.power === 'On' &&
-      (jsonDevice.Mode.modes[0] === 'Opmode_Heat' ||
-        (jsonDevice.Mode.modes[0] === 'Opmode_Auto' &&
-          jsonDevice.Temperatures[0].desired > jsonDevice.Temperatures[0].current))) {
-      // this.platform.log.debug('HEATING');
+    } else if (jsonDevice.Operation.power === 'On' && (jsonDevice.Mode.modes[0] === 'Opmode_Heat' ||
+      (jsonDevice.Mode.modes[0] === 'Opmode_Auto' &&
+        jsonDevice.Temperatures[0].desired > jsonDevice.Temperatures[0].current))) {
       return this.platform.Characteristic.CurrentHeatingCoolingState.HEAT;
     } else {
-      // this.platform.log.debug('OFF');
       return this.platform.Characteristic.CurrentHeatingCoolingState.OFF;
     }
   }

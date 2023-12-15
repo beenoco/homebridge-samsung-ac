@@ -1,20 +1,20 @@
 {
   "private": true,
   "displayName": "Beenoco Samsung AC",
-  "name": "homebridge-beenoco-samsung-ac",
-  "version": "1.0.0",
-  "description": "Homebridge plugin for certain Samsung air conditioners by Beenoco.",
+  "name": "@beenoco/homebridge-samsung-ac",
+  "version": "0.1.0-beta.0",
+  "description": "Samsung air conditioner plugin for Homebridge by Beenoco.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/beenoco/homebridge-beenoco-samsung-ac.git"
+    "url": "https://github.com/beenoco/homebridge-samsung-ac.git"
   },
   "bugs": {
-    "url": "https://github.com/beenoco/homebridge-beenoco-samsung-ac/issues"
+    "url": "https://github.com/beenoco/homebridge-samsung-ac/issues"
   },
   "engines": {
-    "node": "^21.3.0",
-    "homebridge": "^1.6.0"
+    "node": "^20.11.0 || ^21.3.0",
+    "homebridge": "^1.7.0"
   },
   "main": "dist/index.js",
   "scripts": {
@@ -24,7 +24,9 @@
     "prepublishOnly": "npm run lint && npm run build"
   },
   "keywords": [
-    "homebridge-plugin"
+    "air-conditioner",
+    "homebridge-plugin",
+    "samsung"
   ],
   "dependencies": {},
   "devDependencies": {
