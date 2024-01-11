@@ -12,6 +12,7 @@ import https = require('node:https');
  */
 export class BeenocoSamsungACPlatformAccessory {
   private service: Service;
+  private fanService: Service;
   private tlsCA: Buffer;
   private tlsCert: Buffer;
   private tlsKey: Buffer;
@@ -37,8 +38,8 @@ export class BeenocoSamsungACPlatformAccessory {
     this.service.setCharacteristic(
       this.platform.Characteristic.Name, this.platform.config.name || 'Air Conditioner');
 
-    this.service.getCharacteristic(this.platform.Characteristic.CurrentHeatingCoolingState)
-      .onGet(this.handleCurrentHeatingCoolingStateGet.bind(this));
+    // this.service.getCharacteristic(this.platform.Characteristic.CurrentHeatingCoolingState)
+    //   .onGet(this.handleCurrentHeatingCoolingStateGet.bind(this));
 
     this.service.getCharacteristic(this.platform.Characteristic.TargetHeatingCoolingState)
       .onGet(this.handleTargetHeatingCoolingStateGet.bind(this))
@@ -55,30 +56,44 @@ export class BeenocoSamsungACPlatformAccessory {
       .onGet(this.handleTemperatureDisplayUnitsGet.bind(this))
       .onSet(this.handleTemperatureDisplayUnitsSet.bind(this));
 
+    // get the fan service if
+    this.fanService = this.accessory.getService(this.platform.Service.Fan) ||
+      this.accessory.addService(this.platform.Service.Fan);
+
+    this.fanService.setCharacteristic(
+      this.platform.Characteristic.Name, 'Air Conditioner Fan');
+
+    this.fanService.getCharacteristic(this.platform.Characteristic.Active)
+      .onGet(this.fanActiveGet.bind(this));
+
+    this.fanService.getCharacteristic(this.platform.Characteristic.RotationSpeed)
+      .onGet(this.fanSpeedGet.bind(this))
+      .onSet(this.fanSpeedSet.bind(this));
+
     const tlsDir = __dirname + '/../tls';
     this.tlsCA = fs.readFileSync(tlsDir + '/ca.pem');
     this.tlsCert = fs.readFileSync(tlsDir + '/cert.pem');
     this.tlsKey = fs.readFileSync(tlsDir + '/key.pem');
 
-    setInterval(async () => {
-      try {
-        const json = await this.request('GET');
-        this.service.updateCharacteristic(this.platform.Characteristic.CurrentHeatingCoolingState,
-          this.getCurrentState(json.Device));
-        this.service.updateCharacteristic(this.platform.Characteristic.TargetHeatingCoolingState,
-          this.getTargetState(json.Device));
-        this.service.updateCharacteristic(this.platform.Characteristic.CurrentTemperature,
-          json.Device.Temperatures[0].current);
-        this.service.updateCharacteristic(this.platform.Characteristic.TargetTemperature,
-          json.Device.Temperatures[0].desired);
-        this.service.updateCharacteristic(this.platform.Characteristic.TemperatureDisplayUnits,
-          this.getUnit(json.Device.Temperatures[0]));
-      } catch(e) {
-        if (e instanceof Error) {
-          this.platform.log.error('Error from periodic update.', e.message);
-        }
-      }
-    }, this.platform.config.devicePollInterval * 1000);
+    // setInterval(async () => {
+    //   try {
+    //     const json = await this.request('GET');
+    //     this.service.updateCharacteristic(this.platform.Characteristic.CurrentHeatingCoolingState,
+    //       this.getCurrentState(json.Device));
+    //     this.service.updateCharacteristic(this.platform.Characteristic.TargetHeatingCoolingState,
+    //       this.getTargetState(json.Device));
+    //     this.service.updateCharacteristic(this.platform.Characteristic.CurrentTemperature,
+    //       json.Device.Temperatures[0].current);
+    //     this.service.updateCharacteristic(this.platform.Characteristic.TargetTemperature,
+    //       json.Device.Temperatures[0].desired);
+    //     this.service.updateCharacteristic(this.platform.Characteristic.TemperatureDisplayUnits,
+    //       this.getUnit(json.Device.Temperatures[0]));
+    //   } catch(e) {
+    //     if (e instanceof Error) {
+    //       this.platform.log.error('Error from periodic update.', e.message);
+    //     }
+    //   }
+    // }, this.platform.config.devicePollInterval * 1000);
   }
 
   options(method: string, resource: string, contentLength: number) : https.RequestOptions {
@@ -128,6 +143,7 @@ export class BeenocoSamsungACPlatformAccessory {
           });
           response.on('end', () => {
             try {
+              this.platform.log.debug('Received:', rawData);
               resolve(rawData.length > 0 ? JSON.parse(rawData) : {});
             } catch (e) {
               reject(new Error('Error processing raw data: ' + rawData));
@@ -136,7 +152,7 @@ export class BeenocoSamsungACPlatformAccessory {
         });
       // try {
       if (content.length > 0) {
-        // this.platform.log.debug('Sending:', content);
+        this.platform.log.debug('Sending:', content);
         request.write(content);
       }
       request.on('error', e => {
@@ -145,6 +161,33 @@ export class BeenocoSamsungACPlatformAccessory {
       });
       request.end();
     });
+  }
+
+  async getDeviceJson() : Promise<any> {
+
+    try {
+      const json = await this.request('GET');
+      this.service.updateCharacteristic(this.platform.Characteristic.CurrentHeatingCoolingState,
+        this.getCurrentState(json.Device));
+      this.service.updateCharacteristic(this.platform.Characteristic.TargetHeatingCoolingState,
+        this.getTargetState(json.Device));
+      this.service.updateCharacteristic(this.platform.Characteristic.CurrentTemperature,
+        json.Device.Temperatures[0].current);
+      this.service.updateCharacteristic(this.platform.Characteristic.TargetTemperature,
+        json.Device.Temperatures[0].desired);
+      this.service.updateCharacteristic(this.platform.Characteristic.TemperatureDisplayUnits,
+        this.getUnit(json.Device.Temperatures[0]));
+
+      this.fanService.updateCharacteristic(
+        this.platform.Characteristic.RotationSpeed,
+        this.getFanRotationSpeed(json.Device));
+
+      return json;
+    } catch(e) {
+      if (e instanceof Error) {
+        this.platform.log.error('Error from periodic update.', e.message);
+      }
+    }
   }
 
   async handleTargetTemperatureGet() : Promise<CharacteristicValue> {
@@ -213,6 +256,7 @@ export class BeenocoSamsungACPlatformAccessory {
   async handleCurrentTemperatureGet() : Promise<CharacteristicValue> {
     try {
       const json = await this.request('GET', '/temperatures/0');
+      // this.exampleStates.CurrentTemperature = json.Temperature.current;
       return json.Temperature.current;
     } catch (e) {
       if (e instanceof Error) {
@@ -260,6 +304,67 @@ export class BeenocoSamsungACPlatformAccessory {
     }
   }
 
+  async fanActiveGet() : Promise<CharacteristicValue> {
+    try {
+      const json = await this.request('GET');
+      // if (this.getCurrentState(json) === ''
+      // this.platform.log.debug('Fan active result: ', json);
+      if (json.Device.Operation.power === 'On') {
+        return this.platform.api.hap.Characteristic.Active.ACTIVE;
+      } else {
+        return this.platform.api.hap.Characteristic.Active.INACTIVE;
+      }
+    } catch (e) {
+      if (e instanceof Error) {
+        this.platform.log.error('Get fan active failed');
+      }
+      throw new this.platform.api.hap.HapStatusError(
+        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    }
+  }
+
+  async fanSpeedGet() : Promise<CharacteristicValue> {
+    try {
+      const json = await this.request('GET', '/wind');
+      // this.platform.log.debug();
+      // this.platform.log.debug('Speed level', json.Wind.speedLevel);
+      if (json.Wind.speedLevel === 2) { // high
+        return 100;
+      } else if (json.Wind.speedLevel === 3) { // medium
+        return 66;
+      } else if (json.Wind.speedLevel === 4) { // low
+        return 33;
+      }
+      return 0; // auto
+    } catch (e) {
+      if (e instanceof Error) {
+        this.platform.log.error('Get fan speed failed', e);
+      }
+      throw new this.platform.api.hap.HapStatusError(
+        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    }
+  }
+
+  async fanSpeedSet(value: CharacteristicValue) {
+    try {
+      let speedLevel;
+      if (value as number > 75) {
+        speedLevel = 2; // high
+      } else if (value as number > 50) {
+        speedLevel = 3; // medium
+      } else if (value as number > 25) {
+        speedLevel = 4; // low
+      } else {
+        speedLevel = 0; // auto
+      }
+      // this.platform.log.debug('Set speed level', speedLevel);
+      await this.request('PUT', '/wind', {'Wind': {'speedLevel': speedLevel}});
+    } catch {
+      throw new this.platform.api.hap.HapStatusError(
+        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    }
+  }
+
   getCurrentState(jsonDevice) : CharacteristicValue {
     if (jsonDevice.Operation.power === 'On' && (jsonDevice.Mode.modes[0] === 'Opmode_Cool' ||
       (jsonDevice.Mode.modes[0] === 'Opmode_Auto' &&
@@ -290,6 +395,17 @@ export class BeenocoSamsungACPlatformAccessory {
     return jsonTemperature.unit === 'Celsius' ?
       this.platform.Characteristic.TemperatureDisplayUnits.CELSIUS :
       this.platform.Characteristic.TemperatureDisplayUnits.FAHRENHEIT;
+  }
+
+  getFanRotationSpeed(jsonDevice) : CharacteristicValue {
+    if (jsonDevice.Wind.speedLevel === 2) { // high
+      return 100;
+    } else if (jsonDevice.Wind.speedLevel === 3) { // medium
+      return 66;
+    } else if (jsonDevice.Wind.speedLevel === 4) { // low
+      return 33;
+    }
+    return 0; // auto
   }
 
 }
