@@ -325,17 +325,10 @@ export class BeenocoSamsungACPlatformAccessory {
 
   async fanSpeedGet() : Promise<CharacteristicValue> {
     try {
-      const json = await this.request('GET', '/wind');
+      const json = await this.request('GET');
+      return this.getFanRotationSpeed(json.Device);
       // this.platform.log.debug();
       // this.platform.log.debug('Speed level', json.Wind.speedLevel);
-      if (json.Wind.speedLevel === 2) { // high
-        return 100;
-      } else if (json.Wind.speedLevel === 3) { // medium
-        return 66;
-      } else if (json.Wind.speedLevel === 4) { // low
-        return 33;
-      }
-      return 0; // auto
     } catch (e) {
       if (e instanceof Error) {
         this.platform.log.error('Get fan speed failed', e);
@@ -347,18 +340,40 @@ export class BeenocoSamsungACPlatformAccessory {
 
   async fanSpeedSet(value: CharacteristicValue) {
     try {
-      let speedLevel;
-      if (value as number > 75) {
-        speedLevel = 2; // high
-      } else if (value as number > 50) {
-        speedLevel = 3; // medium
-      } else if (value as number > 25) {
-        speedLevel = 4; // low
+      value = value as number;
+      if (value < 5) {
+        this.service.setCharacteristic(
+          this.platform.api.hap.Characteristic.TargetHeatingCoolingState,
+          this.platform.Characteristic.TargetHeatingCoolingState.OFF);
+        this.fanService.setCharacteristic(
+          this.platform.api.hap.Characteristic.Active,
+          this.platform.Characteristic.Active.INACTIVE);
       } else {
-        speedLevel = 0; // auto
+        if (this.service.getCharacteristic(
+          this.platform.api.hap.Characteristic.CurrentHeatingCoolingState).value ===
+          this.platform.Characteristic.CurrentHeatingCoolingState.OFF &&
+          this.fanService.getCharacteristic(
+            this.platform.api.hap.Characteristic.Active).value ===
+            this.platform.Characteristic.Active.INACTIVE) {
+          await this.request('PUT', '/operation', {'Operation': {'power': 'On'}});
+          await this.request('PUT', '/mode', {'Mode': {'modes': ['Opmode_Fan']}});
+        }
+        let speedLevel;
+        if (value < 35) {
+          speedLevel = 4; // low
+        } else if (value < 65) {
+          speedLevel = 3; // medium
+        } else if (value < 95) {
+          speedLevel = 2; // high
+        } else {
+          speedLevel = 0; // auto
+        }
+        // this.platform.log.debug('Set speed level', speedLevel);
+        await this.request('PUT', '/wind', {'Wind': {'speedLevel': speedLevel}});
+        this.fanService.updateCharacteristic(
+          this.platform.api.hap.Characteristic.Active,
+          this.platform.Characteristic.Active.ACTIVE);
       }
-      // this.platform.log.debug('Set speed level', speedLevel);
-      await this.request('PUT', '/wind', {'Wind': {'speedLevel': speedLevel}});
     } catch {
       throw new this.platform.api.hap.HapStatusError(
         this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
@@ -398,14 +413,17 @@ export class BeenocoSamsungACPlatformAccessory {
   }
 
   getFanRotationSpeed(jsonDevice) : CharacteristicValue {
-    if (jsonDevice.Wind.speedLevel === 2) { // high
-      return 100;
-    } else if (jsonDevice.Wind.speedLevel === 3) { // medium
-      return 66;
-    } else if (jsonDevice.Wind.speedLevel === 4) { // low
-      return 33;
+    if (jsonDevice.Operation.power === 'Off') {
+      return 0; // off
+    } else if (jsonDevice.Wind.speedLevel === 4) {
+      return 25; // low
+    } else if (jsonDevice.Wind.speedLevel === 3) {
+      return 50; // medium
+    } else if (jsonDevice.Wind.speedLevel === 2) {
+      return 75; //high
+    } else {
+      return 100; // auto
     }
-    return 0; // auto
   }
 
 }
