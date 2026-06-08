@@ -1,14 +1,14 @@
 import { API, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig, Service, Characteristic } from 'homebridge';
 
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
-import { BeenocoSamsungACPlatformAccessory } from './platformAccessory';
+import { BeenocoSamsungAcPlatformAccessory } from './accessory';
 
 /**
  * HomebridgePlatform
  * This class is the main constructor for your plugin, this is where you should
  * parse the user config and discover/register accessories with Homebridge.
  */
-export class BeenocoSamsungACPlatform implements DynamicPlatformPlugin {
+export class BeenocoSamsungAcPlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service = this.api.hap.Service;
   public readonly Characteristic: typeof Characteristic = this.api.hap.Characteristic;
 
@@ -51,20 +51,6 @@ export class BeenocoSamsungACPlatform implements DynamicPlatformPlugin {
    */
   discoverDevices() {
 
-    // EXAMPLE ONLY
-    // A real plugin you would discover accessories from the local network, cloud services
-    // or a user-defined array in the platform config.
-    // const exampleDevices = [
-    //   {
-    //     exampleUniqueId: 'ABCD',
-    //     exampleDisplayName: 'Bedroom',
-    //   },
-    //   {
-    //     exampleUniqueId: 'EFGH',
-    //     exampleDisplayName: 'Kitchen',
-    //   },
-    // ];
-
     // loop over the discovered devices and register each one if it has not already been registered
     for (const device of this.config.devices) {
 
@@ -87,7 +73,7 @@ export class BeenocoSamsungACPlatform implements DynamicPlatformPlugin {
 
         // create the accessory handler for the restored accessory
         // this is imported from `platformAccessory.ts`
-        new BeenocoSamsungACPlatformAccessory(this, existingAccessory);
+        new BeenocoSamsungAcPlatformAccessory(this, existingAccessory);
 
         // it is possible to remove platform accessories at any time using `api.unregisterPlatformAccessories`, eg.:
         // remove platform accessories when no longer present
@@ -106,7 +92,7 @@ export class BeenocoSamsungACPlatform implements DynamicPlatformPlugin {
 
         // create the accessory handler for the newly create accessory
         // this is imported from `platformAccessory.ts`
-        new BeenocoSamsungACPlatformAccessory(this, accessory);
+        new BeenocoSamsungAcPlatformAccessory(this, accessory);
 
         // link the accessory to your platform
         this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);

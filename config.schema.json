@@ -54,6 +54,7 @@
         "title": "Device Token",
         "type": "string",
         "required": true,
+        "format": "password",
         "placeholder": "xxxxxxxxxx",
         "description": "The device token retrieved from the Wi-Fi Kit during pairing"
       },
