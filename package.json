@@ -1,10 +1,13 @@
 {
-  "private": false,
-  "displayName": "Beenoco Samsung AC",
   "name": "@beenoco/homebridge-samsung-ac",
-  "version": "0.2.0",
+  "displayName": "Beenoco Samsung AC",
+  "type": "module",
+  "version": "0.2.1-alpha.1",
+  "private": false,
   "description": "Samsung air conditioner plugin for Homebridge by Beenoco.",
+  "author": "Beenoco",
   "license": "Apache-2.0",
+  "homepage": "https://github.com/beenoco/homebridge-samsung-ac#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/beenoco/homebridge-samsung-ac.git"
@@ -12,32 +15,34 @@
   "bugs": {
     "url": "https://github.com/beenoco/homebridge-samsung-ac/issues"
   },
-  "engines": {
-    "node": "^20.11.0 || ^21.3.0 || ^24.0.0",
-    "homebridge": "^1.7.0 || ^2.1.0"
-  },
-  "main": "dist/index.js",
-  "scripts": {
-    "lint": "eslint src/**.ts --max-warnings=0",
-    "watch": "npm run build && npm link && nodemon",
-    "build": "rimraf ./dist && tsc",
-    "prepublishOnly": "npm run lint && npm run build"
-  },
   "keywords": [
     "air-conditioner",
     "homebridge-plugin",
     "samsung"
   ],
-  "dependencies": {},
+  "main": "dist/index.js",
+  "engines": {
+    "node": "^22.10.0 || ^24.0.0",
+    "homebridge": "^1.8.0 || ^2.0.0"
+  },
+  "scripts": {
+    "build": "rimraf ./dist && tsc",
+    "lint": "eslint . --max-warnings=0",
+    "prepublishOnly": "npm run lint && npm run build",
+    "watch": "npm run build && npm link && nodemon"
+  },
+  "dependencies": {
+    "homebridge-lib": "^8.1.1"
+  },
   "devDependencies": {
-    "@types/node": "^18.16.20",
-    "@typescript-eslint/eslint-plugin": "^5.62.0",
-    "@typescript-eslint/parser": "^5.62.0",
-    "eslint": "^8.45.0",
-    "homebridge": "^1.6.0",
-    "nodemon": "^2.0.22",
-    "rimraf": "^3.0.2",
-    "ts-node": "^10.9.1",
-    "typescript": "^4.9.5"
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^25.9.2",
+    "eslint": "^10.4.1",
+    "homebridge": "^2.1.0",
+    "nodemon": "^3.1.14",
+    "rimraf": "^6.1.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.60.1"
   }
 }

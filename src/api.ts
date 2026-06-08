@@ -1,9 +1,10 @@
-import fs = require('node:fs');
-import https = require('node:https');
+import fs from 'node:fs';
+import https from 'node:https';
+import path from 'node:path';
 
 import { PlatformAccessory } from 'homebridge';
 
-import { BeenocoSamsungAcPlatform } from './platform';
+import { BeenocoSamsungAcPlatform } from './platform.js';
 
 export class BeenocoSamsungAcApi {
 
@@ -15,10 +16,10 @@ export class BeenocoSamsungAcApi {
     private readonly platform: BeenocoSamsungAcPlatform,
     private readonly accessory: PlatformAccessory,
   ) {
-    const tlsDir = __dirname + '/../tls';
-    this.tlsCA = fs.readFileSync(tlsDir + '/ca.pem');
-    this.tlsCert = fs.readFileSync(tlsDir + '/cert.pem');
-    this.tlsKey = fs.readFileSync(tlsDir + '/key.pem');
+    const tlsDir = path.join(import.meta.dirname, '../tls');
+    this.tlsCA = fs.readFileSync(path.join(tlsDir, 'ca.pem'));
+    this.tlsCert = fs.readFileSync(path.join(tlsDir, 'cert.pem'));
+    this.tlsKey = fs.readFileSync(path.join(tlsDir, 'key.pem'));
   }
 
   private options(method: string, resource: string, contentLength: number) : https.RequestOptions {
@@ -100,23 +101,23 @@ export class BeenocoSamsungAcApi {
   }
 
   async putPower(value: string) {
-    return this.put('/operation', {'Operation': {'power': value}});
+    return this.put('/operation', { 'Operation': { 'power': value } });
   }
 
   async putMode(value: Mode) {
-    return this.put('/mode', {'Mode': {'modes': [value]}});
+    return this.put('/mode', { 'Mode': { 'modes': [value] } });
   }
 
   async putDesiredTemperature(value: number) {
-    return this.put('/temperatures/0', {'Temperature': {'desired': value}});
+    return this.put('/temperatures/0', { 'Temperature': { 'desired': value } });
   }
 
   async putTemperatureUnit(value: string) {
-    return this.put('/temperatures', {'Temperature': {'unit': value}});
+    return this.put('/temperatures', { 'Temperature': { 'unit': value } });
   }
 
   async putWindSpeedLevel(value: WindSpeedLevel) {
-    return this.put('/wind', {'Wind': {'speedLevel': value as number}});
+    return this.put('/wind', { 'Wind': { 'speedLevel': value as number } });
   }
 }
 

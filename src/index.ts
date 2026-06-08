@@ -1,8 +1,8 @@
 import { API } from 'homebridge';
 
-import { PLATFORM_NAME } from './settings';
-import { BeenocoSamsungAcPlatform } from './platform';
+import { PLATFORM_NAME } from './settings.js';
+import { BeenocoSamsungAcPlatform } from './platform.js';
 
-export = (api: API) => {
+export default (api: API) => {
   api.registerPlatform(PLATFORM_NAME, BeenocoSamsungAcPlatform);
 };

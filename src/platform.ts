@@ -1,7 +1,7 @@
 import { API, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig, Service, Characteristic } from 'homebridge';
 
-import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
-import { BeenocoSamsungAcPlatformAccessory } from './accessory';
+import { PLATFORM_NAME, PLUGIN_NAME } from './settings.js';
+import { BeenocoSamsungAcPlatformAccessory } from './accessory.js';
 
 /**
  * HomebridgePlatform
@@ -9,8 +9,8 @@ import { BeenocoSamsungAcPlatformAccessory } from './accessory';
  * parse the user config and discover/register accessories with Homebridge.
  */
 export class BeenocoSamsungAcPlatform implements DynamicPlatformPlugin {
-  public readonly Service: typeof Service = this.api.hap.Service;
-  public readonly Characteristic: typeof Characteristic = this.api.hap.Characteristic;
+  public readonly Service: typeof Service;
+  public readonly Characteristic: typeof Characteristic;
 
   // this is used to track restored cached accessories
   public readonly accessories: PlatformAccessory[] = [];
@@ -21,6 +21,9 @@ export class BeenocoSamsungAcPlatform implements DynamicPlatformPlugin {
     public readonly api: API,
   ) {
     this.log.debug('Finished initializing platform:', this.config.name);
+
+    this.Service = api.hap.Service;
+    this.Characteristic = api.hap.Characteristic;
 
     // When this event is fired it means Homebridge has restored all cached accessories from disk.
     // Dynamic Platform plugins should only register new accessories after this event was fired,

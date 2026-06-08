@@ -1,7 +1,7 @@
 import { Service, PlatformAccessory, CharacteristicValue } from 'homebridge';
 
-import { BeenocoSamsungAcPlatform } from './platform';
-import * as API from './api';
+import { BeenocoSamsungAcPlatform } from './platform.js';
+import * as API from './api.js';
 
 export class BeenocoSamsungAcPlatformAccessory {
 
@@ -238,14 +238,14 @@ export class BeenocoSamsungAcPlatformAccessory {
   getFanRotationSpeed(device: API.DeviceStatus) : CharacteristicValue {
     if (device.Operation.power === API.Power.ON) {
       switch (device.Wind.speedLevel) {
-        case API.WindSpeedLevel.LOW:
-          return 25;
-        case API.WindSpeedLevel.MEDIUM:
-          return 50;
-        case API.WindSpeedLevel.HIGH:
-          return 75;
-        case API.WindSpeedLevel.AUTO:
-          return 100;
+      case API.WindSpeedLevel.LOW:
+        return 25;
+      case API.WindSpeedLevel.MEDIUM:
+        return 50;
+      case API.WindSpeedLevel.HIGH:
+        return 75;
+      case API.WindSpeedLevel.AUTO:
+        return 100;
       }
     }
     return 0;
