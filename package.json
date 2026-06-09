@@ -2,7 +2,7 @@
   "name": "@beenoco/homebridge-samsung-ac",
   "displayName": "Beenoco Samsung AC",
   "type": "module",
-  "version": "0.2.1-alpha.1",
+  "version": "0.2.1",
   "private": false,
   "description": "Samsung air conditioner plugin for Homebridge by Beenoco.",
   "author": "Beenoco",
@@ -29,6 +29,7 @@
     "build": "rimraf ./dist && tsc",
     "lint": "eslint . --max-warnings=0",
     "prepublishOnly": "npm run lint && npm run build",
+    "publishDryRun": "npm publish --dry-run --access public",
     "watch": "npm run build && npm link && nodemon"
   },
   "dependencies": {
