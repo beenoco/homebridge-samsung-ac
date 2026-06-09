@@ -57,6 +57,12 @@ export class BeenocoSamsungAcPlatformAccessory {
     setInterval(async () => {
       this.updateCharacteristics();
     }, this.platform.config.devicePollInterval * 1000);
+
+    // Clean up any legacy (non-v2) fan services
+    const legacyFanService = this.accessory.getService(this.platform.Service.Fan);
+    if (legacyFanService) {
+      this.accessory.removeService(legacyFanService);
+    }
   }
 
   async getDeviceStatus() : Promise<API.DeviceStatus> {
