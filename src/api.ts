@@ -5,21 +5,27 @@ import path from 'node:path';
 import { PlatformAccessory } from 'homebridge';
 
 import { BeenocoSamsungAcPlatform } from './platform.js';
+import { TLSLoadError, RequestError, RequestTimeoutError } from './errors.js';
 
 export class BeenocoSamsungAcApi {
 
-  private tlsCA: Buffer;
-  private tlsCert: Buffer;
-  private tlsKey: Buffer;
+  private readonly tlsOptions : https.AgentOptions;
 
   constructor(
     private readonly platform: BeenocoSamsungAcPlatform,
     private readonly accessory: PlatformAccessory,
   ) {
-    const tlsDir = path.join(import.meta.dirname, '../tls');
-    this.tlsCA = fs.readFileSync(path.join(tlsDir, 'ca.pem'));
-    this.tlsCert = fs.readFileSync(path.join(tlsDir, 'cert.pem'));
-    this.tlsKey = fs.readFileSync(path.join(tlsDir, 'key.pem'));
+    try {
+      this.tlsOptions = {
+        ca: fs.readFileSync(path.join(import.meta.dirname, '../tls/ca.pem')),
+        cert: fs.readFileSync(path.join(import.meta.dirname, '../tls/cert.pem')),
+        key: fs.readFileSync(path.join(import.meta.dirname, '../tls/key.pem')),
+        ciphers: 'DEFAULT:@SECLEVEL=0', // allow weak encryption
+      };
+    } catch (e) {
+      this.platform.log.error('Failed to load TLS files:', e);
+      throw new TLSLoadError(String((e as Error).message || e));
+    }
   }
 
   private options(method: string, resource: string, contentLength: number) : https.RequestOptions {
@@ -30,12 +36,7 @@ export class BeenocoSamsungAcApi {
       method: method,
       rejectUnauthorized: false,
       secureProtocol: 'TLSv1_method',
-      agent: new https.Agent({
-        ca: this.tlsCA,
-        cert: this.tlsCert,
-        key: this.tlsKey,
-        ciphers: 'DEFAULT:@SECLEVEL=0',
-      }),
+      agent: new https.Agent(this.tlsOptions),
       headers: {
         'Content-Type': 'application/json',
         'Content-Length': contentLength,
@@ -54,53 +55,57 @@ export class BeenocoSamsungAcApi {
   private async request(method: string, resource='', json: unknown = null) : Promise<string> {
     const content = json ? JSON.stringify(json) : '';
     return new Promise((resolve, reject) => {
-      const request = https.request(
-        this.options(method, resource, content.length), (response) => {
-          response.setEncoding('utf8');
-          if (response.statusCode && (response.statusCode < 200 || response.statusCode > 299)) {
-            reject(new Error('Request error status code: ' + response.statusCode));
-          }
-          let rawData = '';
-          response.on('data', (chunk) => {
-            rawData += chunk;
-          });
-          response.on('end', () => {
-            if (rawData) {
-              this.platform.log.debug('Received:', rawData);
-            }
-            resolve(rawData);
-          });
+      const request = https.request(this.options(method, resource, content.length), (response) => {
+        response.setEncoding('utf8');
+        let rawData = '';
+        const statusCode = response.statusCode;
+        response.on('data', (chunk) => {
+          rawData += chunk;
         });
+        response.on('end', () => {
+          if (statusCode && (statusCode < 200 || statusCode > 299)) {
+            const err = new RequestError('Request error status code: ' + statusCode, statusCode, rawData);
+            this.platform.log.error('Request returned error status', err.message, err.body);
+            reject(err);
+            return;
+          }
+          resolve(rawData);
+        });
+      });
       if (content.length > 0) {
         this.platform.log.debug('Sending:', content);
         request.write(content);
       }
       request.on('error', e => {
-        this.platform.log.error('Error', e);
-        reject(e);
+        this.platform.log.error('Request error', e);
+        reject(e instanceof Error ? e : new RequestError(String(e)));
+      });
+      request.setTimeout(this.platform.config.requestTimeout || 10000, () => {
+        const te = new RequestTimeoutError();
+        this.platform.log.error('Request timed out');
+        request.destroy(te);
       });
       request.end();
     });
   }
 
   async getDeviceStatus() : Promise<DeviceStatus> {
-    const received = await this.request('GET')
-      .catch(e => {
-        if (e instanceof Error) {
-          this.platform.log.error('Request status failed: {}', e.message);
-        }
-        throw new this.platform.api.hap.HapStatusError(
-          this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-      });
-    const response : DeviceResponse = JSON.parse(received);
-    return response.Device;
+    const received = await this.request('GET');
+    this.platform.log.debug('Received:', received);
+    try {
+      const response = JSON.parse(received) as DeviceResponse;
+      return response.Device;
+    } catch (e) {
+      this.platform.log.error('Invalid JSON from device', e, received);
+      throw new RequestError('Invalid JSON from device', undefined, received);
+    }
   }
 
   private async put(resource: string, json: unknown) {
     return this.request('PUT', resource, json);
   }
 
-  async putPower(value: string) {
+  async putPower(value: Power) {
     return this.put('/operation', { 'Operation': { 'power': value } });
   }
 
@@ -112,38 +117,29 @@ export class BeenocoSamsungAcApi {
     return this.put('/temperatures/0', { 'Temperature': { 'desired': value } });
   }
 
-  async putTemperatureUnit(value: string) {
-    return this.put('/temperatures', { 'Temperature': { 'unit': value } });
-  }
-
   async putWindSpeedLevel(value: WindSpeedLevel) {
     return this.put('/wind', { 'Wind': { 'speedLevel': value as number } });
   }
 }
 
-export declare const enum WindSpeedLevel {
+export const enum WindSpeedLevel {
   AUTO = 0,
   LOW = 4,
   MEDIUM = 3,
-  HIGH = 2
+  HIGH = 2,
 }
 
-export declare const enum Mode {
+export const enum Mode {
   AUTO = 'Opmode_Auto',
   COOL = 'Opmode_Cool',
   DRY = 'Opmode_Dry',
   FAN = 'Opmode_Fan',
-  HEAT = 'Opmode_Heat'
+  HEAT = 'Opmode_Heat',
 }
 
-export declare const enum Power {
+export const enum Power {
   OFF = 'Off',
-  ON = 'On'
-}
-
-export declare const enum Unit {
-  CELSIUS = 'Celsius',
-  FAHRENHEIT = 'Fahrenheit'
+  ON = 'On',
 }
 
 export interface AlarmStatus {

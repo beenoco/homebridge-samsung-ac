@@ -23,15 +23,15 @@ export class BeenocoSamsungAcPlatformAccessory {
       this.accessory.addService(this.platform.Service.Thermostat);
     this.service.setCharacteristic(this.platform.Characteristic.Name, 'Air Conditioner');
     this.service.getCharacteristic(this.platform.Characteristic.CurrentHeatingCoolingState)
-      .onGet(this.handleCurrentHeatingCoolingStateGet.bind(this));
+      .onGet(this.safeGet(this.handleCurrentHeatingCoolingStateGet.bind(this)));
     this.service.getCharacteristic(this.platform.Characteristic.TargetHeatingCoolingState)
-      .onGet(this.handleTargetHeatingCoolingStateGet.bind(this))
-      .onSet(this.handleTargetHeatingCoolingStateSet.bind(this));
+      .onGet(this.safeGet(this.handleTargetHeatingCoolingStateGet.bind(this)))
+      .onSet(this.safeSet(this.handleTargetHeatingCoolingStateSet.bind(this)));
     this.service.getCharacteristic(this.platform.Characteristic.CurrentTemperature)
-      .onGet(this.handleCurrentTemperatureGet.bind(this));
+      .onGet(this.safeGet(this.handleCurrentTemperatureGet.bind(this)));
     this.service.getCharacteristic(this.platform.Characteristic.TargetTemperature)
-      .onGet(this.handleTargetTemperatureGet.bind(this))
-      .onSet(this.handleTargetTemperatureSet.bind(this))
+      .onGet(this.safeGet(this.handleTargetTemperatureGet.bind(this)))
+      .onSet(this.safeSet(this.handleTargetTemperatureSet.bind(this)))
       .setProps({
         minValue: 16,
         maxValue: 30,
@@ -42,10 +42,10 @@ export class BeenocoSamsungAcPlatformAccessory {
       this.accessory.addService(this.platform.Service.Fanv2);
     this.fanService.setCharacteristic(this.platform.Characteristic.Name, 'Air Conditioner Fan');
     this.fanService.getCharacteristic(this.platform.Characteristic.Active)
-      .onGet(this.handleFanActiveGet.bind(this));
+      .onGet(this.safeGet(this.handleFanActiveGet.bind(this)));
     this.fanService.getCharacteristic(this.platform.Characteristic.RotationSpeed)
-      .onGet(this.handleFanRotationSpeedGet.bind(this))
-      .onSet(this.handleFanRotationSpeedSet.bind(this))
+      .onGet(this.safeGet(this.handleFanRotationSpeedGet.bind(this)))
+      .onSet(this.safeSet(this.handleFanRotationSpeedSet.bind(this)))
       .setProps({
         minValue: 0,
         maxValue: 100,
@@ -55,19 +55,22 @@ export class BeenocoSamsungAcPlatformAccessory {
     this.api = new API.BeenocoSamsungAcApi(platform, accessory);
 
     setInterval(async () => {
-      this.updateCharacteristics();
+      try {
+        await this.updateCharacteristics();
+      } catch (e) {
+        this.platform.log.error('Periodic update failed:', e);
+      }
     }, this.platform.config.devicePollInterval * 1000);
-
-    // Clean up any legacy (non-v2) fan services
-    const legacyFanService = this.accessory.getService(this.platform.Service.Fan);
-    if (legacyFanService) {
-      this.accessory.removeService(legacyFanService);
-    }
   }
 
   async getDeviceStatus() : Promise<API.DeviceStatus> {
     if (!this.deviceStatusPromise) {
       const device = this.api.getDeviceStatus()
+        .catch((e) => {
+          this.platform.log.error('Get device status failed:', e.message || e);
+          throw new this.platform.api.hap.HapStatusError(
+            this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+        })
         .finally(() => {
           this.deviceStatusPromise = null;
         });
@@ -78,7 +81,7 @@ export class BeenocoSamsungAcPlatformAccessory {
 
   async updateCharacteristics() {
     const device = await this.getDeviceStatus();
-    
+
     this.service.updateCharacteristic(this.platform.Characteristic.CurrentHeatingCoolingState,
       this.getCurrentState(device));
     this.service.updateCharacteristic(this.platform.Characteristic.TargetHeatingCoolingState,
@@ -92,6 +95,30 @@ export class BeenocoSamsungAcPlatformAccessory {
       this.getFanActive(device));
     this.fanService.updateCharacteristic(this.platform.Characteristic.RotationSpeed,
       this.getFanRotationSpeed(device));
+  }
+
+  private safeGet(fn: () => Promise<CharacteristicValue>) {
+    return async (): Promise<CharacteristicValue> => {
+      try {
+        return await fn();
+      } catch (e) {
+        this.platform.log.error('Characteristic get failed:', e);
+        throw new this.platform.api.hap.HapStatusError(
+          this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+      }
+    };
+  }
+
+  private safeSet(fn: (value: CharacteristicValue) => Promise<void>) {
+    return async (value: CharacteristicValue): Promise<void> => {
+      try {
+        await fn(value);
+      } catch (e) {
+        this.platform.log.error('Characteristic set failed:', e);
+        throw new this.platform.api.hap.HapStatusError(
+          this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+      }
+    };
   }
 
   async handleTargetTemperatureGet() : Promise<CharacteristicValue> {
@@ -141,19 +168,6 @@ export class BeenocoSamsungAcPlatformAccessory {
     await this.updateCharacteristics();
   }
 
-  async handleTemperatureDisplayUnitsGet() : Promise<CharacteristicValue> {
-    const device = await this.getDeviceStatus();
-    return this.getUnit(device.Temperatures[0]);
-  }
-
-  async handleTemperatureDisplayUnitsSet(value: CharacteristicValue) {
-    this.platform.log.debug('Handling temperature display units set', value);
-    const unit = value === this.platform.Characteristic.TemperatureDisplayUnits.CELSIUS ?
-      API.Unit.CELSIUS : API.Unit.FAHRENHEIT;
-    await this.api.putTemperatureUnit(unit);
-    await this.updateCharacteristics();
-  }
-
   async handleFanActiveGet() : Promise<CharacteristicValue> {
     const device = await this.getDeviceStatus();
     const val = this.getFanActive(device);
@@ -170,6 +184,12 @@ export class BeenocoSamsungAcPlatformAccessory {
 
   async handleFanRotationSpeedSet(value: CharacteristicValue) {
     value = value as number;
+    const currentState = this.service.getCharacteristic(
+      this.platform.Characteristic.CurrentHeatingCoolingState).value;
+    if (currentState === this.platform.Characteristic.CurrentHeatingCoolingState.OFF) {
+      await this.api.putPower(API.Power.ON);
+      await this.api.putMode(API.Mode.FAN);
+    }
     this.platform.log.debug('Handle fan rotation speed set', value);
     let speedLevel : API.WindSpeedLevel;
     if (value <= 25) {
@@ -211,12 +231,6 @@ export class BeenocoSamsungAcPlatformAccessory {
     }
   }
 
-  getUnit(temperature : API.TemperatureStatus) {
-    return temperature.unit === API.Unit.CELSIUS ?
-      this.platform.Characteristic.TemperatureDisplayUnits.CELSIUS :
-      this.platform.Characteristic.TemperatureDisplayUnits.FAHRENHEIT;
-  }
-
   getFanActive(device: API.DeviceStatus) : CharacteristicValue {
     return device.Operation.power === API.Power.ON ?
       this.platform.Characteristic.Active.ACTIVE :
@@ -224,7 +238,7 @@ export class BeenocoSamsungAcPlatformAccessory {
   }
 
   getFanRotationSpeed(device: API.DeviceStatus) : CharacteristicValue {
-    if (device.Operation.power === API.Power.ON) {
+    if (device && device.Operation.power === API.Power.ON) {
       switch (device.Wind.speedLevel) {
       case API.WindSpeedLevel.LOW:
         return 25;

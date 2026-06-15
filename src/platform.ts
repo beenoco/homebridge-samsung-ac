@@ -25,6 +25,14 @@ export class BeenocoSamsungAcPlatform implements DynamicPlatformPlugin {
     this.Service = api.hap.Service;
     this.Characteristic = api.hap.Characteristic;
 
+    if (!this.config || typeof this.config !== 'object') {
+      this.log.error('Platform configuration is missing or invalid');
+      return;
+    }
+    if (!Array.isArray(this.config.devices)) {
+      this.log.warn('No devices configured (config.devices missing or not an array)');
+    }
+
     // When this event is fired it means Homebridge has restored all cached accessories from disk.
     // Dynamic Platform plugins should only register new accessories after this event was fired,
     // in order to ensure they weren't added to homebridge already. This event can also be used
@@ -55,7 +63,7 @@ export class BeenocoSamsungAcPlatform implements DynamicPlatformPlugin {
   discoverDevices() {
 
     // loop over the discovered devices and register each one if it has not already been registered
-    for (const device of this.config.devices) {
+    for (const device of (this.config.devices)) {
 
       // generate a unique id for the accessory this should be generated from
       // something globally unique, but constant, for example, the device serial

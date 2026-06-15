@@ -2,7 +2,7 @@
   "name": "@beenoco/homebridge-samsung-ac",
   "displayName": "Beenoco Samsung AC",
   "type": "module",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": false,
   "description": "Samsung air conditioner plugin for Homebridge by Beenoco.",
   "author": "Beenoco",
